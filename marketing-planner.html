@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Marketing Slate Planner</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,700;0,9..40,800;1,9..40,400&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    body { margin: 0; padding: 0; }
+    #root { width: 100%; height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  
+  <script type="text/babel">
+    const { useState, useMemo, useRef, useEffect } = React;
+
+    /* ─── constants ─── */
+    const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+    const MO = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+
+    const CHANNELS = [
+      { value:"email", icon:"✉", label:"Email", color:"#3BA58A" },
+      { value:"sms",   icon:"💬", label:"SMS",   color:"#D4598A" },
+      { value:"app",   icon:"📱", label:"App Push", color:"#C4925A" },
+    ];
+
+    const TOPICS = [
+      { value:"product-launch",     label:"Product Launch",     emoji:"🚀", color:"#7C3AED" },
+      { value:"product-spotlight",  label:"Product Spotlight",  emoji:"🔦", color:"#2563EB" },
+      { value:"collection-spotlight",label:"Collection Spotlight",emoji:"📦", color:"#0891B2" },
+      { value:"education",          label:"Education / Tips",   emoji:"📚", color:"#059669" },
+      { value:"community-ugc",      label:"Community / UGC",    emoji:"🤝", color:"#D97706" },
+      { value:"sale-promo",         label:"Sale / Promo Launch",emoji:"🏷️", color:"#DC2626" },
+      { value:"restock",            label:"Restock Reminder",   emoji:"🔄", color:"#7C3AED" },
+      { value:"motivational",       label:"Motivational / Brand",emoji:"✨", color:"#EC4899" },
+      { value:"misc",               label:"Misc.",              emoji:"📌", color:"#6B7280" },
+    ];
+
+    const getTopicConf = (v) => TOPICS.find(t=>t.value===v) || TOPICS[TOPICS.length-1];
+    const getChConf = (v) => CHANNELS.find(c=>c.value===v) || CHANNELS[0];
+
+    /* ─── week type config ─── */
+    const TYPES = {
+      none:     { label:"— Select —",       emoji:"",    color:"#8C8578", bg:"#fff",     border:"#D5D0C8" },
+      evergreen:{ label:"Evergreen",         emoji:"🟢",  color:"#2D8A6E", bg:"#E8F5F0", border:"#2D8A6E" },
+      launch:   { label:"Launch Week",       emoji:"🚀",  color:"#7C3AED", bg:"#F3EEFF", border:"#7C3AED" },
+      sale:     { label:"Sale / Promo Launch", emoji:"🔴",  color:"#DC2626", bg:"#FEF2F2", border:"#DC2626" },
+      ramp:     { label:"Launch Ramp Up",    emoji:"🟣↗", color:"#9333EA", bg:"#FAF5FF", border:"#9333EA" },
+      wind:     { label:"Launch Wind Down",  emoji:"🟣↘", color:"#6D28D9", bg:"#F5F0FF", border:"#6D28D9" },
+    };
+
+    /* ─── default touchpoint templates ─── */
+    const EVERGREEN = {
+      1: [{ ch:"email", topic:"education",         label:"Educational / Tips",     detail:"Recent product purchasers — tips about a product they bought", seg:"Recent Product Purchasers" }],
+      2: [
+        { ch:"email", topic:"product-spotlight",    label:"Product Spotlight",      detail:"Cross-sell to adjacent product purchasers", seg:"Adjacent Product Purchasers" },
+        { ch:"sms",   topic:"product-spotlight",    label:"Product Spotlight SMS",  detail:"Cross-sell support — paired with email", seg:"Adjacent Product Purchasers (SMS)" },
+      ],
+      3: [
+        { ch:"email", topic:"community-ugc",        label:"UGC / Community",        detail:"User-generated content, community features", seg:"Full List" },
+        { ch:"app",   topic:"community-ugc",        label:"UGC / Community Push",   detail:"App notification — community content", seg:"App Users" },
+      ],
+      0: [
+        { ch:"email", topic:"collection-spotlight",  label:"Collection Spotlight",   detail:"Restock reminder — collection-based", seg:"Past Purchasers" },
+        { ch:"sms",   topic:"restock",              label:"Restock Reminder",       detail:"Restock nudge via SMS", seg:"Past Purchasers (SMS)" },
+        { ch:"app",   topic:"motivational",         label:"Motivational Quote",     detail:"Brand-building — lash confidence, self-care", seg:"App Users" },
+      ],
+    };
+
+    const LAUNCH_WEEK = {
+      0:[], 
+      1: [{ ch:"app", topic:"product-launch", label:"Send #1 — Breaking News", detail:"Secret access, lash map/tutorial offering", seg:"App Users" }],
+      2: [
+        { ch:"sms",   topic:"product-launch", label:"Send #2 — VIP Early Access", detail:"Urgency, sent 30 min BEFORE email, short & punchy", seg:"VIP / SMS List" },
+        { ch:"email", topic:"product-launch", label:"Send #3 — Launch Day",       detail:"Highest info content, longer form, get to site", seg:"Full List" },
+        { ch:"app",   topic:"product-launch", label:"Launch Day Push",            detail:"Lash map/tutorial is the offering", seg:"App Users" },
+      ],
+      3:[], 4:[], 5:[], 6:[],
+    };
+
+    const RAMP_WEEK = {
+      0:[], 1:[],
+      2: [
+        { ch:"email", topic:"product-spotlight", label:"Product Spotlight + Launch Tease", detail:"Normal Product Spotlight cross-sell email WITH a product launch teaser callout added (tease is secondary — not the subject line)", seg:"Adjacent Product Purchasers" },
+        { ch:"sms",   topic:"product-spotlight", label:"Product Spotlight SMS",            detail:"Cross-sell support — paired with email", seg:"Adjacent Product Purchasers (SMS)" },
+      ],
+      3:[], 4:[], 5:[], 6:[],
+    };
+
+    const WIND_WEEK = {
+      0:[],
+      1: [
+        { ch:"email", topic:"product-launch", label:"Clickers/Viewers Only (+6)", detail:"Lash maps + videos, how it changes your business, teaser of app content", seg:"Launch Clickers & Viewers" },
+        { ch:"app",   topic:"product-launch", label:"Trial Offer (+6)",           detail:"First time trial % off, risk free, ever-changing deal, extra tutorial", seg:"App Users — Non-Purchasers" },
+      ],
+      2:[], 3:[],
+      4: [
+        { ch:"email", topic:"product-launch", label:"Another Angle (+2)", detail:"Different angle about launch — 90-day list", seg:"90-Day Engaged" },
+      ],
+      5:[], 6:[],
+    };
+
+    const SALE_WEEK_T = {
+      0:[], 1:[],
+      2: [
+        { ch:"email", topic:"sale-promo", label:"Sale Tease",      detail:"Sent with product spotlight email as callout, not the subject", seg:"Full List" },
+        { ch:"app",   topic:"sale-promo", label:"Fill Your Cart",  detail:"Get them browsing before the sale", seg:"App Users" },
+      ],
+      3: [
+        { ch:"sms", topic:"sale-promo", label:"Fill Carts / Keep Phone Close", detail:"Build anticipation — sale drops tomorrow", seg:"SMS List" },
+        { ch:"app", topic:"sale-promo", label:"Send #1 — Shop the Sale",      detail:"App gets first access", seg:"App Users" },
+      ],
+      4: [
+        { ch:"email", topic:"sale-promo", label:"Send #3 — Shop the Sale", detail:"Main sale email — full details", seg:"Full List" },
+        { ch:"sms",   topic:"sale-promo", label:"Send #2 — Shop the Sale", detail:"SMS sale push", seg:"SMS List" },
+      ],
+      5:[], 6:[],
+    };
+
+    function getEventTemplate(type) {
+      if (type==="launch") return LAUNCH_WEEK;
+      if (type==="sale")   return SALE_WEEK_T;
+      if (type==="ramp")   return RAMP_WEEK;
+      if (type==="wind")   return WIND_WEEK;
+      return null;
+    }
+
+    function buildWeekTPs(weekType, wi) {
+      const tps = [];
+      const tmpl = getEventTemplate(weekType);
+      for (let di=0; di<7; di++) {
+        const eventItems = (tmpl && tmpl[di]) ? tmpl[di] : [];
+        const items = eventItems.map(t => ({ ...t, eventType:weekType, dayIdx:di, weekIndex:wi, uid:`${wi}-${di}-${t.ch}-${t.topic}-${t.label.slice(0,8)}` }));
+        if (items.length === 0 || weekType === "evergreen") {
+          const eg = EVERGREEN[di] || [];
+          eg.forEach(t => {
+            if (!items.some(x=>x.ch===t.ch && x.topic===t.topic)) {
+              items.push({ ...t, eventType:"evergreen", dayIdx:di, weekIndex:wi, uid:`${wi}-${di}-eg-${t.ch}-${t.topic}` });
+            }
+          });
+        }
+        tps.push(...items);
+      }
+      return tps;
+    }
+
+    function getSunday(d) { const r=new Date(d); const dow=r.getDay(); r.setDate(r.getDate()-dow); return r; }
+    function getCalWeeks(year, month) {
+      const first=new Date(year,month,1), last=new Date(year,month+1,0);
+      const start=getSunday(first); const weeks=[];
+      let cur=new Date(start);
+      while(true) {
+        const wk=[];
+        for(let i=0;i<7;i++){const d=new Date(cur);d.setDate(d.getDate()+i);wk.push({date:d,inMonth:d.getMonth()===month,day:d.getDate()});}
+        weeks.push(wk); cur.setDate(cur.getDate()+7);
+        if(weeks.length>=4&&cur>last)break; if(weeks.length>=6)break;
+      }
+      return weeks;
+    }
+
+    function chipStyle(tp, brief) {
+      const topicConf = getTopicConf(brief?.topic || tp.topic);
+      const chConf = getChConf(brief?.ch || tp.ch);
+      const hasBrief = brief && (brief.subject || brief.messaging || brief.segment);
+      const isPlanned = !!(brief?.subject?.trim());
+      const isRampWind = tp.eventType === "ramp" || tp.eventType === "wind";
+      return {
+        bg: isRampWind ? "#FFFFFF" : topicConf.color + "10",
+        fg: isRampWind ? "#7C3AED" : topicConf.color,
+        border: isRampWind ? "#7C3AED" : topicConf.color,
+        dot: isRampWind ? "#7C3AED" : topicConf.color,
+        chColor: chConf.color,
+        hasBrief, isPlanned, isRampWind,
+      };
+    }
+
+    const LBL = { fontSize:11,fontWeight:700,color:"#3D3830",display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:".06em",fontFamily:"'DM Sans',sans-serif" };
+    const INP = { width:"100%",padding:"10px 14px",borderRadius:8,border:"1.5px solid #D5D0C8",fontSize:13,fontFamily:"'DM Sans',sans-serif",outline:"none",boxSizing:"border-box",background:"#fff" };
+    const BTNP = { padding:"8px 24px",borderRadius:8,border:"none",background:"#2A2520",fontSize:12,fontWeight:700,color:"#FAF9F6",cursor:"pointer",fontFamily:"'DM Sans',sans-serif" };
+    const BTNS = { padding:"8px 20px",borderRadius:8,border:"1.5px solid #D5D0C8",background:"#fff",fontSize:12,fontWeight:700,color:"#6B6560",cursor:"pointer",fontFamily:"'DM Sans',sans-serif" };
+    const BTND = { padding:"8px 16px",borderRadius:8,border:"1.5px solid #EF444430",background:"#FEF2F2",fontSize:12,fontWeight:700,color:"#DC2626",cursor:"pointer",fontFamily:"'DM Sans',sans-serif" };
+
+    function TPModal({ isOpen, onClose, tp, brief, onSave, onDelete, isNew }) {
+      const [ch, setCh] = useState("email");
+      const [topic, setTopic] = useState("misc");
+      const [subject, setSubject] = useState("");
+      const [messaging, setMessaging] = useState("");
+      const [segment, setSegment] = useState("");
+      const ref = useRef(null);
+
+      useEffect(() => {
+        if (tp || isNew) {
+          setCh(brief?.ch || tp?.ch || "email");
+          setTopic(brief?.topic || tp?.topic || "misc");
+          setSubject(brief?.subject || "");
+          setMessaging(brief?.messaging || "");
+          setSegment(brief?.segment || tp?.seg || "");
+        }
+      }, [tp, brief, isNew]);
+
+      useEffect(() => { if (isOpen) setTimeout(()=>ref.current?.focus(),60); }, [isOpen]);
+      if (!isOpen) return null;
+
+      const topicConf = getTopicConf(topic);
+      const chConf = getChConf(ch);
+      const title = isNew ? "New Touchpoint" : (tp?.label || "Edit Touchpoint");
+
+      return (
+        <div onClick={onClose} style={{ position:"fixed",inset:0,background:"rgba(30,27,23,0.55)",backdropFilter:"blur(5px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000 }}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:"#FEFDFB",borderRadius:16,padding:28,width:540,maxWidth:"93vw",boxShadow:"0 24px 64px rgba(30,27,23,0.25)",fontFamily:"'DM Sans',sans-serif",maxHeight:"90vh",overflowY:"auto" }}>
+            <div style={{ display:"flex",justifyContent:"space-between",marginBottom:20 }}>
+              <div>
+                <div style={{ fontSize:10,fontWeight:700,color:"#8C8578",textTransform:"uppercase",letterSpacing:".08em",marginBottom:4 }}>{isNew?"Create New":"Edit"} Touchpoint</div>
+                <div style={{ fontSize:18,fontWeight:800,color:"#2A2520" }}>{title}</div>
+                {!isNew && tp?.detail && <div style={{ fontSize:12,color:"#8C8578",marginTop:2 }}>{tp.detail}</div>}
+              </div>
+              <button onClick={onClose} style={{ background:"none",border:"none",fontSize:24,cursor:"pointer",color:"#B5B0A8",padding:"0 4px",alignSelf:"flex-start" }}>×</button>
+            </div>
+
+            <div style={{ display:"flex",flexDirection:"column",gap:18 }}>
+              <div>
+                <label style={LBL}>Channel</label>
+                <div style={{ display:"flex",gap:8 }}>
+                  {CHANNELS.map(c=>(
+                    <button key={c.value} onClick={()=>setCh(c.value)} style={{
+                      flex:1,padding:"10px 8px",borderRadius:8,border:`2px solid ${ch===c.value?c.color:c.color+"25"}`,
+                      background:ch===c.value?c.color+"12":"#fff",cursor:"pointer",
+                      display:"flex",flexDirection:"column",alignItems:"center",gap:3,
+                      fontFamily:"'DM Sans',sans-serif",transition:"all 0.15s",
+                    }}>
+                      <span style={{ fontSize:18 }}>{c.icon}</span>
+                      <span style={{ fontSize:11,fontWeight:ch===c.value?800:600,color:ch===c.value?c.color:"#8C8578" }}>{c.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label style={LBL}>Topic</label>
+                <div style={{ display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6 }}>
+                  {TOPICS.map(t=>(
+                    <button key={t.value} onClick={()=>setTopic(t.value)} style={{
+                      padding:"8px 6px",borderRadius:7,border:`1.5px solid ${topic===t.value?t.color:t.color+"20"}`,
+                      background:topic===t.value?t.color+"12":"#fff",cursor:"pointer",
+                      display:"flex",alignItems:"center",gap:5,
+                      fontFamily:"'DM Sans',sans-serif",transition:"all 0.15s",
+                    }}>
+                      <span style={{ fontSize:13 }}>{t.emoji}</span>
+                      <span style={{ fontSize:10,fontWeight:topic===t.value?800:600,color:topic===t.value?t.color:"#6B6560",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{t.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {ch === "email" && (
+                <div>
+                  <label style={LBL}>Subject Line</label>
+                  <input ref={ref} value={subject} onChange={e=>setSubject(e.target.value)} placeholder="e.g. Your lashes called — they want an upgrade 💅" style={INP}/>
+                </div>
+              )}
+              <div>
+                <label style={LBL}>{ch==="email"?"Preview Text / Messaging Notes":"Messaging / Copy Notes"}</label>
+                <textarea ref={ch!=="email"?ref:undefined} value={messaging} onChange={e=>setMessaging(e.target.value)} placeholder="Key points, tone, CTA direction…" rows={3} style={{...INP,resize:"vertical",height:"auto"}}/>
+              </div>
+              <div>
+                <label style={LBL}>Segment / Audience</label>
+                <input value={segment} onChange={e=>setSegment(e.target.value)} placeholder="e.g. VIP 90-Day Engaged" style={INP}/>
+              </div>
+            </div>
+
+            <div style={{ display:"flex",justifyContent:"space-between",marginTop:24 }}>
+              <div>
+                {!isNew && onDelete && <button onClick={()=>{onDelete();onClose();}} style={BTND}>Delete</button>}
+                {!isNew && !onDelete && <button onClick={()=>{onSave({ch,topic,subject:"",messaging:"",segment:""});onClose();}} style={BTND}>Clear</button>}
+              </div>
+              <div style={{ display:"flex",gap:10 }}>
+                <button onClick={onClose} style={BTNS}>Cancel</button>
+                <button onClick={()=>{onSave({ch,topic,subject,messaging,segment});onClose();}} style={BTNP}>{isNew?"Add":"Save"}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function NotesModal({ isOpen, onClose, notes, onSave }) {
+      const [text,setText]=useState(""); const ref=useRef(null);
+      useEffect(()=>{setText(notes||"");},[notes]);
+      useEffect(()=>{if(isOpen)setTimeout(()=>ref.current?.focus(),50);},[isOpen]);
+      if(!isOpen) return null;
+      return (
+        <div onClick={onClose} style={{ position:"fixed",inset:0,background:"rgba(30,27,23,0.45)",backdropFilter:"blur(4px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:999 }}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:"#FEFDFB",borderRadius:14,padding:24,width:440,maxWidth:"90vw",boxShadow:"0 20px 50px rgba(30,27,23,0.2)",fontFamily:"'DM Sans',sans-serif" }}>
+            <div style={{ fontSize:16,fontWeight:800,color:"#2A2520",marginBottom:12 }}>📝 Week Notes</div>
+            <textarea ref={ref} value={text} onChange={e=>setText(e.target.value)} placeholder="Meeting notes, content themes, coordination reminders…" rows={5} style={{...INP,resize:"vertical",height:"auto",lineHeight:1.6}}/>
+            <div style={{ display:"flex",justifyContent:"flex-end",gap:10,marginTop:16 }}>
+              <button onClick={onClose} style={BTNS}>Cancel</button>
+              <button onClick={()=>{onSave(text);onClose();}} style={BTNP}>Save</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function Chip({ tp, brief, onEdit, onDelete, onDragStart, onDragEnd }) {
+      const [isHovered, setIsHovered] = useState(false);
+      const s = chipStyle(tp, brief);
+      const effectiveCh = brief?.ch || tp.ch;
+      const effectiveTopic = brief?.topic || tp.topic;
+      const topicConf = getTopicConf(effectiveTopic);
+      const chConf = getChConf(effectiveCh);
+      const displayLabel = (brief?.subject?.trim()) ? brief.subject : tp.label;
+      
+      return (
+        <div 
+          draggable
+          onDragStart={e=>{e.dataTransfer.setData("text/plain",tp.uid);e.dataTransfer.effectAllowed="move";onDragStart(tp.uid);}}
+          onDragEnd={onDragEnd}
+          onMouseEnter={()=>setIsHovered(true)}
+          onMouseLeave={()=>setIsHovered(false)}
+          onClick={e=>{e.stopPropagation();onEdit(tp);}}
+          style={{
+            position:"relative",
+            display:"flex",alignItems:"center",gap:3,
+            padding:"2.5px 6px",borderRadius:4,fontSize:9,fontWeight:600,
+            background:s.bg,color:s.fg,
+            border: s.isRampWind ? `1.5px solid ${s.border}88` : (s.hasBrief?`1.5px solid ${s.border}55`:`1px solid ${s.border}22`),
+            cursor:"grab",lineHeight:1.35,maxWidth:"100%",
+            fontFamily:"'DM Sans',sans-serif",
+            boxShadow:"0 1px 3px rgba(0,0,0,0.04)",userSelect:"none",
+            opacity:s.isPlanned?1:0.72,
+          }}
+          title={`${chConf.icon} ${chConf.label} · ${topicConf.emoji} ${topicConf.label}\n${tp.detail||""}\nDrag to move · Click to edit`}
+        >
+          <span style={{ fontSize:8,flexShrink:0,opacity:0.8 }}>{chConf.icon}</span>
+          <span style={{ fontSize:7,flexShrink:0,marginRight:1 }}>{topicConf.emoji}</span>
+          <span style={{ overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1 }}>
+            {displayLabel.length>24?displayLabel.slice(0,22)+"…":displayLabel}
+          </span>
+          {s.hasBrief && <span style={{ width:4,height:4,borderRadius:"50%",background:s.dot,flexShrink:0 }}/>}
+          
+          {isHovered && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(tp);
+              }}
+              style={{
+                position:"absolute",
+                top:-6,
+                right:-6,
+                width:14,
+                height:14,
+                borderRadius:"50%",
+                background:"#DC2626",
+                border:"1.5px solid #fff",
+                color:"#fff",
+                fontSize:9,
+                fontWeight:700,
+                display:"flex",
+                alignItems:"center",
+                justifyContent:"center",
+                cursor:"pointer",
+                padding:0,
+                lineHeight:1,
+                boxShadow:"0 2px 4px rgba(0,0,0,0.2)",
+                zIndex:10,
+              }}
+              title="Delete this touchpoint"
+            >
+              ×
+            </button>
+          )}
+        </div>
+      );
+    }
+
+    function MarketingSlatePlanner() {
+      const now=new Date();
+      const [year,setYear]=useState(now.getFullYear());
+      const [month,setMonth]=useState(now.getMonth());
+      const [weekTypes,setWeekTypes]=useState({});
+      const [briefs,setBriefs]=useState({});
+      const [weekNotes,setWeekNotes]=useState({});
+      const [customTPs,setCustomTPs]=useState({});
+      const [deletedTPs,setDeletedTPs]=useState({});
+      const [dragUid,setDragUid]=useState(null);
+      const [dragOverCell,setDragOverCell]=useState(null);
+      const [tpOverrides,setTpOverrides]=useState({});
+      const [editModal,setEditModal]=useState({open:false,tp:null,isNew:false,newWi:null,newDi:null});
+      const [notesModal,setNotesModal]=useState({open:false,wk:null});
+      const [history,setHistory]=useState([]);
+      const MAX_HISTORY = 50;
+
+      const monthKey=`${year}-${month}`;
+      const weeks=useMemo(()=>getCalWeeks(year,month),[year,month]);
+      const curTypes=weekTypes[monthKey]||{};
+      const curNotes=weekNotes[monthKey]||{};
+      const curCustom=customTPs[monthKey]||[];
+      const curDeleted=deletedTPs[monthKey]||[];
+
+      const addToHistory = (action) => {
+        setHistory(prev => {
+          const newHist = [...prev, action].slice(-MAX_HISTORY);
+          return newHist;
+        });
+      };
+
+      const handleUndo = () => {
+        if (history.length === 0) return;
+        
+        const lastAction = history[history.length - 1];
+        
+        switch(lastAction.type) {
+          case 'edit_brief':
+            setBriefs(lastAction.prevBriefs);
+            break;
+          case 'delete_tp':
+            if (lastAction.isCustom) {
+              setCustomTPs(lastAction.prevCustomTPs);
+            } else {
+              setDeletedTPs(lastAction.prevDeletedTPs);
+            }
+            setBriefs(lastAction.prevBriefs);
+            break;
+          case 'add_custom_tp':
+            setCustomTPs(lastAction.prevCustomTPs);
+            setBriefs(lastAction.prevBriefs);
+            break;
+          case 'move_tp':
+            if (lastAction.isCustom) {
+              setCustomTPs(lastAction.prevCustomTPs);
+            } else {
+              setTpOverrides(lastAction.prevTpOverrides);
+            }
+            break;
+          case 'set_week_type':
+            setWeekTypes(lastAction.prevWeekTypes);
+            break;
+          case 'set_week_notes':
+            setWeekNotes(lastAction.prevWeekNotes);
+            break;
+          case 'clear_all':
+            setBriefs(lastAction.prevBriefs);
+            setCustomTPs(lastAction.prevCustomTPs);
+            setDeletedTPs(lastAction.prevDeletedTPs);
+            setTpOverrides(lastAction.prevTpOverrides);
+            setWeekTypes(lastAction.prevWeekTypes);
+            setWeekNotes(lastAction.prevWeekNotes);
+            break;
+        }
+        
+        setHistory(prev => prev.slice(0, -1));
+      };
+
+      const handleClearAll = () => {
+        if (!confirm("Are you sure you want to clear all touchpoints from this calendar? This will remove ALL touchpoints including templates, custom sends, and briefs.")) {
+          return;
+        }
+        
+        addToHistory({
+          type: 'clear_all',
+          prevBriefs: briefs,
+          prevCustomTPs: customTPs,
+          prevDeletedTPs: deletedTPs,
+          prevTpOverrides: tpOverrides,
+          prevWeekTypes: weekTypes,
+          prevWeekNotes: weekNotes,
+        });
+        
+        setBriefs(prev => {
+          const newBriefs = {...prev};
+          Object.keys(newBriefs).forEach(key => {
+            if (key.includes(monthKey) || key.startsWith('custom-')) {
+              delete newBriefs[key];
+            }
+          });
+          return newBriefs;
+        });
+        
+        setCustomTPs(prev => ({...prev, [monthKey]: []}));
+        setDeletedTPs(prev => ({...prev, [monthKey]: []}));
+        setTpOverrides(prev => {
+          const newOverrides = {...prev};
+          Object.keys(newOverrides).forEach(uid => {
+            if (uid.includes(monthKey)) {
+              delete newOverrides[uid];
+            }
+          });
+          return newOverrides;
+        });
+        
+        setWeekTypes(prev => ({...prev, [monthKey]: {}}));
+        setWeekNotes(prev => ({...prev, [monthKey]: {}}));
+      };
+
+      const handlePublishToAsana = () => {
+        alert("🚀 Asana integration coming soon!\n\nOnce configured, this will push your marketing calendar to your Asana project with all touchpoints, briefs, and details.");
+      };
+
+      const setType=(wi,type)=>{
+        addToHistory({
+          type: 'set_week_type',
+          prevWeekTypes: weekTypes,
+        });
+        
+        setWeekTypes(prev=>{
+          const mk={...(prev[monthKey]||{})};
+          if(!type){
+            const oldType=mk[wi];
+            delete mk[wi];
+            if(oldType==="launch"){
+              if(mk[wi-1]==="ramp") delete mk[wi-1];
+              if(mk[wi+1]==="wind") delete mk[wi+1];
+            }
+          } else {
+            mk[wi]=type;
+            if(type==="launch"){
+              if(wi>0&&(!mk[wi-1]||mk[wi-1]==="evergreen")) mk[wi-1]="ramp";
+              if(wi<weeks.length-1&&(!mk[wi+1]||mk[wi+1]==="evergreen")) mk[wi+1]="wind";
+            }
+          }
+          return {...prev,[monthKey]:mk};
+        });
+      };
+
+      const allTPs=useMemo(()=>{
+        const all=[];
+        weeks.forEach((_,wi)=>{
+          const type=curTypes[wi]||"evergreen";
+          const tps=buildWeekTPs(type,wi);
+          tps.forEach(tp=>{
+            if (curDeleted.includes(tp.uid)) return;
+            
+            const ov=tpOverrides[tp.uid];
+            if(ov){tp.dayIdx=ov.dayIdx;tp.weekIndex=ov.weekIndex;}
+            all.push(tp);
+          });
+        });
+        curCustom.forEach(tp=>all.push(tp));
+        return all;
+      },[weeks,curTypes,tpOverrides,curCustom,curDeleted]);
+
+      const tpGrid=useMemo(()=>{
+        const grid={};
+        allTPs.forEach(tp=>{const k=`${tp.weekIndex}-${tp.dayIdx}`;if(!grid[k])grid[k]=[];grid[k].push(tp);});
+        return grid;
+      },[allTPs]);
+
+      const counts=useMemo(()=>({
+        email:allTPs.filter(t=>(briefs[t.uid]?.ch||t.ch)==="email").length,
+        sms:allTPs.filter(t=>(briefs[t.uid]?.ch||t.ch)==="sms").length,
+        app:allTPs.filter(t=>(briefs[t.uid]?.ch||t.ch)==="app").length,
+      }),[allTPs,briefs]);
+      const briefedCount=Object.values(briefs).filter(b=>b&&(b.subject||b.messaging||b.segment)).length;
+
+      const prevMonth=()=>{if(month===0){setYear(y=>y-1);setMonth(11);}else setMonth(m=>m-1);};
+      const nextMonth=()=>{if(month===11){setYear(y=>y+1);setMonth(0);}else setMonth(m=>m+1);};
+
+      const handleDragStart=(uid)=>setDragUid(uid);
+      const handleDragEnd=()=>{setDragUid(null);setDragOverCell(null);};
+      const handleDragOver=(wi,di,e)=>{e.preventDefault();e.dataTransfer.dropEffect="move";setDragOverCell(`${wi}-${di}`);};
+      const handleDragLeave=()=>setDragOverCell(null);
+      const handleDrop=(wi,di,e)=>{
+        e.preventDefault();
+        if(!dragUid)return;
+        
+        const isCustom=curCustom.some(t=>t.uid===dragUid);
+        
+        if(isCustom){
+          addToHistory({
+            type: 'move_tp',
+            isCustom: true,
+            prevCustomTPs: customTPs,
+          });
+          setCustomTPs(prev=>({...prev,[monthKey]:(prev[monthKey]||[]).map(t=>t.uid===dragUid?{...t,weekIndex:wi,dayIdx:di}:t)}));
+        } else {
+          addToHistory({
+            type: 'move_tp',
+            isCustom: false,
+            prevTpOverrides: tpOverrides,
+          });
+          setTpOverrides(prev=>({...prev,[dragUid]:{weekIndex:wi,dayIdx:di}}));
+        }
+        setDragUid(null);setDragOverCell(null);
+      };
+
+      const handleDeleteTP = (tp) => {
+        const isCustom = tp?.uid?.startsWith("custom-");
+        
+        if (isCustom) {
+          addToHistory({
+            type: 'delete_tp',
+            isCustom: true,
+            prevCustomTPs: customTPs,
+            prevBriefs: briefs,
+          });
+          setCustomTPs(prev=>({...prev,[monthKey]:(prev[monthKey]||[]).filter(t=>t.uid!==tp.uid)}));
+        } else {
+          addToHistory({
+            type: 'delete_tp',
+            isCustom: false,
+            prevDeletedTPs: deletedTPs,
+            prevBriefs: briefs,
+          });
+          setDeletedTPs(prev=>({...prev,[monthKey]:[...(prev[monthKey]||[]),tp.uid]}));
+        }
+        
+        setBriefs(prev=>{const n={...prev};delete n[tp.uid];return n;});
+      };
+
+      const openNewTP=(wi,di)=>{
+        setEditModal({open:true,tp:null,isNew:true,newWi:wi,newDi:di});
+      };
+
+      const handleSave=(vals)=>{
+        if(editModal.isNew){
+          addToHistory({
+            type: 'add_custom_tp',
+            prevCustomTPs: customTPs,
+            prevBriefs: briefs,
+          });
+          
+          const uid=`custom-${editModal.newWi}-${editModal.newDi}-${Date.now()}`;
+          const newTp={
+            uid,ch:vals.ch,topic:vals.topic,
+            label:vals.subject||getTopicConf(vals.topic).label,
+            detail:vals.messaging||"",seg:vals.segment||"",
+            eventType:"custom",weekIndex:editModal.newWi,dayIdx:editModal.newDi,
+          };
+          setCustomTPs(prev=>({...prev,[monthKey]:[...(prev[monthKey]||[]),newTp]}));
+          setBriefs(prev=>({...prev,[uid]:vals}));
+        } else {
+          addToHistory({
+            type: 'edit_brief',
+            prevBriefs: briefs,
+          });
+          setBriefs(prev=>({...prev,[editModal.tp.uid]:vals}));
+        }
+      };
+
+      const handleDelete=()=>{
+        if(!editModal.tp)return;
+        handleDeleteTP(editModal.tp);
+      };
+
+      const isCustomTP=(tp)=>tp?.uid?.startsWith("custom-");
+
+      return (
+        <div style={{ fontFamily:"'DM Sans',sans-serif",background:"linear-gradient(165deg,#FEFDFB 0%,#F7F5F0 40%,#F0EDE6 100%)",minHeight:"100vh",padding:"24px 16px" }}>
+          <TPModal isOpen={editModal.open} tp={editModal.tp} brief={editModal.tp?briefs[editModal.tp.uid]:null} isNew={editModal.isNew}
+            onClose={()=>setEditModal({open:false,tp:null,isNew:false,newWi:null,newDi:null})}
+            onSave={handleSave} onDelete={isCustomTP(editModal.tp)?handleDelete:null} />
+          <NotesModal isOpen={notesModal.open} notes={curNotes[notesModal.wk]||""} onClose={()=>setNotesModal({open:false,wk:null})}
+            onSave={text=>{
+              addToHistory({
+                type: 'set_week_notes',
+                prevWeekNotes: weekNotes,
+              });
+              setWeekNotes(prev=>({...prev,[monthKey]:{...(prev[monthKey]||{}),[notesModal.wk]:text}}));
+            }} />
+
+          <div style={{ maxWidth:1200,margin:"0 auto" }}>
+            <div style={{ marginBottom:20 }}>
+              <h1 style={{ fontFamily:"'Instrument Serif',serif",fontSize:32,fontWeight:400,color:"#2A2520",margin:0,fontStyle:"italic" }}>Marketing Slate</h1>
+              <p style={{ fontSize:12,color:"#8C8578",margin:"4px 0 0",fontWeight:500 }}>
+                Select week types → touchpoints auto-populate → click chips to edit channel, topic, copy → drag to rearrange → click blank days to add → hover over chips for delete X.
+              </p>
+            </div>
+
+            <div style={{ display:"flex",gap:10,marginBottom:16,flexWrap:"wrap" }}>
+              <button 
+                onClick={handleUndo} 
+                disabled={history.length === 0}
+                style={{
+                  ...BTNS,
+                  opacity: history.length === 0 ? 0.5 : 1,
+                  cursor: history.length === 0 ? 'not-allowed' : 'pointer',
+                  display:"flex",
+                  alignItems:"center",
+                  gap:6,
+                }}
+              >
+                <span style={{ fontSize:14 }}>↶</span> Undo
+              </button>
+              
+              <button 
+                onClick={handleClearAll}
+                style={{
+                  ...BTND,
+                  display:"flex",
+                  alignItems:"center",
+                  gap:6,
+                }}
+              >
+                <span style={{ fontSize:14 }}>🗑️</span> Clear All
+              </button>
+              
+              <button 
+                onClick={handlePublishToAsana}
+                style={{
+                  ...BTNP,
+                  display:"flex",
+                  alignItems:"center",
+                  gap:6,
+                  marginLeft:"auto",
+                }}
+              >
+                <span style={{ fontSize:14 }}>🚀</span> Publish to Asana
+              </button>
+            </div>
+
+            <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:16,flexWrap:"wrap" }}>
+              <button onClick={prevMonth} style={{ background:"#fff",border:"1.5px solid #D5D0C8",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:14,fontWeight:600,color:"#3D3830" }}>←</button>
+              <h2 style={{ fontFamily:"'Instrument Serif',serif",fontSize:22,fontWeight:400,color:"#2A2520",margin:0,minWidth:170,textAlign:"center" }}>{MO[month]} {year}</h2>
+              <button onClick={nextMonth} style={{ background:"#fff",border:"1.5px solid #D5D0C8",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:14,fontWeight:600,color:"#3D3830" }}>→</button>
+              <div style={{ marginLeft:"auto",display:"flex",gap:8,flexWrap:"wrap" }}>
+                {[["✉",counts.email,"#3BA58A"],["💬",counts.sms,"#D4598A"],["📱",counts.app,"#C4925A"]].map(([ic,v,c])=>(
+                  <div key={ic} style={{ background:"#fff",borderRadius:7,padding:"5px 12px",border:"1.5px solid #E5E1DB",display:"flex",alignItems:"center",gap:5 }}>
+                    <span style={{ fontSize:11 }}>{ic}</span><span style={{ fontSize:15,fontWeight:800,color:c }}>{v}</span>
+                  </div>
+                ))}
+                {briefedCount>0&&(
+                  <div style={{ background:"#2A2520",borderRadius:7,padding:"5px 12px",display:"flex",alignItems:"center",gap:5 }}>
+                    <span style={{ fontSize:9,color:"#A09A92",fontWeight:600 }}>BRIEFED</span><span style={{ fontSize:15,fontWeight:800,color:"#FAF9F6" }}>{briefedCount}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ display:"flex",gap:6,marginBottom:14,flexWrap:"wrap" }}>
+              {TOPICS.map(t=>(
+                <div key={t.value} style={{ display:"flex",alignItems:"center",gap:3,padding:"3px 8px",borderRadius:5,background:t.color+"10",border:`1px solid ${t.color}20` }}>
+                  <span style={{ fontSize:9 }}>{t.emoji}</span>
+                  <span style={{ fontSize:9,fontWeight:700,color:t.color }}>{t.label}</span>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ background:"#fff",borderRadius:14,border:"1.5px solid #E5E1DB",overflow:"hidden",boxShadow:"0 2px 16px rgba(30,27,23,0.06)" }}>
+              <div style={{ display:"grid",gridTemplateColumns:"148px repeat(7, minmax(0, 1fr))",background:"#2A2520",position:"sticky",top:0,zIndex:10 }}>
+                <div style={{ padding:"11px 10px",fontSize:9,fontWeight:700,color:"#706B63",textTransform:"uppercase",letterSpacing:".1em" }}>Week Type</div>
+                {DAYS.map(d=>(<div key={d} style={{ padding:"11px 6px",fontSize:10,fontWeight:700,color:"#FAF9F6",textAlign:"center",textTransform:"uppercase",letterSpacing:".08em" }}>{d}</div>))}
+              </div>
+
+              {weeks.map((week,wi)=>{
+                const wType=curTypes[wi]||null;
+                const typeConf=wType?TYPES[wType]:TYPES.none;
+                const isAuto=wType==="ramp"||wType==="wind";
+                const hasNotes=!!(curNotes[wi]);
+
+                return (
+                  <div key={wi} style={{ display:"grid",gridTemplateColumns:"148px repeat(7, minmax(0, 1fr))",borderBottom:"1px solid #E5E1DB",minHeight:94 }}>
+                    <div style={{ padding:"7px 8px",display:"flex",flexDirection:"column",gap:4,background:"#FAFAF7",borderRight:"1px solid #E5E1DB" }}>
+                      <span style={{ fontSize:9.5,color:"#8C8578",fontWeight:600,textTransform:"uppercase",letterSpacing:".05em" }}>
+                        {MO[week[0].date.getMonth()].slice(0,3)} {week[0].day}–{week[6].day}
+                      </span>
+                      <select value={wType||""} onChange={e=>setType(wi,e.target.value||null)} style={{
+                        padding:"5px 6px",borderRadius:6,fontSize:10,fontWeight:700,
+                        border:`1.5px solid ${typeConf.border}${wType?"60":""}`,
+                        background:wType?typeConf.bg:"#fff",color:wType?typeConf.color:"#6B6560",
+                        cursor:"pointer",fontFamily:"'DM Sans',sans-serif",outline:"none",
+                      }}>
+                        <option value="">— Select —</option>
+                        <option value="evergreen">🟢 Evergreen</option>
+                        <option value="launch">🚀 Launch Week</option>
+                        <option value="sale">🔴 Sale / Promo Launch</option>
+                        <option value="ramp">🟣↗ Ramp Up</option>
+                        <option value="wind">🟣↘ Wind Down</option>
+                      </select>
+                      {isAuto&&<div style={{ fontSize:8,color:typeConf.color,fontStyle:"italic" }}>Auto-set from Launch</div>}
+
+                      <button onClick={()=>setNotesModal({open:true,wk:wi})} style={{
+                        fontSize:8,fontWeight:600,marginTop:"auto",
+                        color:hasNotes?"#B45309":"#B5B0A8",background:hasNotes?"#FFF8ED":"transparent",
+                        padding:"2px 6px",borderRadius:3,border:hasNotes?"1px solid #B4530920":"1px solid transparent",
+                        cursor:"pointer",fontFamily:"'DM Sans',sans-serif",textAlign:"left",
+                      }}>📝 {hasNotes?"View Notes":"Add Notes"}</button>
+                      {hasNotes&&<div style={{ fontSize:7.5,color:"#8C8578",lineHeight:1.3,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical" }}>{curNotes[wi]}</div>}
+                    </div>
+
+                    {week.map((dayInfo,di)=>{
+                      const cellKey=`${wi}-${di}`;
+                      const tps=tpGrid[cellKey]||[];
+                      const isDragOver=dragOverCell===cellKey;
+
+                      return (
+                        <div key={di}
+                          onClick={()=>dayInfo.inMonth&&openNewTP(wi,di)}
+                          onDragOver={e=>handleDragOver(wi,di,e)} onDragLeave={handleDragLeave} onDrop={e=>handleDrop(wi,di,e)}
+                          style={{
+                            padding:"4px 3px",borderRight:di<6?"1px solid #EDEAE5":"none",
+                            display:"flex",flexDirection:"column",gap:2,
+                            opacity:dayInfo.inMonth?1:0.22,
+                            background:isDragOver?"#D1FAE5":"transparent",
+                            outline:isDragOver?"2px dashed #2D8A6E":"none",outlineOffset:"-2px",borderRadius:isDragOver?4:0,
+                            cursor:dayInfo.inMonth?"pointer":"default",
+                            transition:"background 0.12s",minHeight:82,
+                            overflow:"hidden",
+                          }}
+                        >
+                          <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center" }}>
+                            <span style={{ fontSize:11,fontWeight:700,color:dayInfo.inMonth?"#3D3830":"#C5C0B8" }}>{dayInfo.day}</span>
+                            {dayInfo.inMonth&&<span style={{ fontSize:11,color:"#D5D0C8",fontWeight:300 }}>+</span>}
+                          </div>
+                          <div style={{ display:"flex",flexDirection:"column",gap:2,flex:1 }}>
+                            {tps.map(tp=>(
+                              <Chip key={tp.uid} tp={tp} brief={briefs[tp.uid]}
+                                onEdit={t=>setEditModal({open:true,tp:t,isNew:false,newWi:null,newDi:null})}
+                                onDelete={handleDeleteTP}
+                                onDragStart={handleDragStart} onDragEnd={handleDragEnd} />
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={{ marginTop:16,padding:"14px 18px",background:"#fff",borderRadius:12,border:"1.5px solid #E5E1DB" }}>
+              <div style={{ fontSize:12,fontWeight:800,color:"#2A2520",marginBottom:6 }}>How it works</div>
+              <div style={{ fontSize:11,color:"#8C8578",lineHeight:1.8,maxWidth:900 }}>
+                <strong style={{ color:"#3D3830" }}>1. Set week types:</strong> Use dropdowns. <em>Launch Week</em> auto-sets adjacent weeks to Ramp Up / Wind Down. Change back to Evergreen or "— Select —" to reset.<br/>
+                <strong style={{ color:"#3D3830" }}>2. Edit any touchpoint:</strong> Click a chip to change its channel (Email/SMS/App), topic, subject line, messaging notes & segment. Unbriefed chips appear slightly faded.<br/>
+                <strong style={{ color:"#3D3830" }}>3. Add new touchpoints:</strong> Click any day's + to create a custom send from scratch — choose channel, topic, and brief it right away.<br/>
+                <strong style={{ color:"#3D3830" }}>4. Delete touchpoints:</strong> Hover over any chip and click the red X to remove it. Use Undo if you make a mistake.<br/>
+                <strong style={{ color:"#3D3830" }}>5. Drag to rearrange:</strong> Grab any chip and drop it on a different day. Green dashed outline shows the target.<br/>
+                <strong style={{ color:"#3D3830" }}>6. Week notes:</strong> 📝 in the sidebar for meeting context, coordination, content themes.<br/>
+                <strong style={{ color:"#3D3830" }}>7. Undo:</strong> Click the Undo button to reverse your last action (up to 50 actions remembered).<br/>
+                <strong style={{ color:"#3D3830" }}>Ramp Up note:</strong> The Tuesday email in Ramp Up is your normal Product Spotlight — with a launch tease callout baked in (not the subject line).
+              </div>
+            </div>
+
+            <div style={{ textAlign:"center",marginTop:20,fontSize:10,color:"#B5B0A8" }}>CRM Protocol Planner — Built for your marketing team</div>
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<MarketingSlatePlanner />);
+  </script>
+</body>
+</html>
