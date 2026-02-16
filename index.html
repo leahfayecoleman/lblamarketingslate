@@ -8,6 +8,11 @@
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  
   <style>
     body { margin: 0; padding: 0; }
     #root { width: 100%; height: 100vh; }
@@ -17,6 +22,35 @@
   <div id="root"></div>
   
   <script type="text/babel">
+    // Wait for Firebase to load, then initialize
+    function initializeApp() {
+      // Initialize Firebase
+      const firebaseConfig = {
+        apiKey: "AIzaSyCbIt2cnQLWodaPOkytABJ3EctIm-FaHyQ",
+        authDomain: "lbla-marketing-app-v2.firebaseapp.com",
+        projectId: "lbla-marketing-app-v2",
+        storageBucket: "lbla-marketing-app-v2.firebasestorage.app",
+        messagingSenderId: "939532599575",
+        appId: "1:939532599575:web:6e07d2776abede260cb752"
+      };
+      
+      firebase.initializeApp(firebaseConfig);
+      window.db = firebase.firestore();
+      
+      // Now render the React app
+      renderApp();
+    }
+
+    // Check if Firebase is loaded
+    if (typeof firebase !== 'undefined') {
+      initializeApp();
+    } else {
+      window.addEventListener('load', () => {
+        setTimeout(initializeApp, 100);
+      });
+    }
+
+    function renderApp() {
     const { useState, useMemo, useRef, useEffect } = React;
 
     /* ─── constants ─── */
@@ -157,7 +191,7 @@
       while(true) {
         const wk=[];
         for(let i=0;i<7;i++){const d=new Date(cur);d.setDate(d.getDate()+i);wk.push({date:d,inMonth:d.getMonth()===month,day:d.getDate()});}
-        weeks.push(wk); cur.setDate(cur.getDate()+7);
+        weeks.push(wk); cur.setDate(cur.setDate()+7);
         if(weeks.length>=4&&cur>last)break; if(weeks.length>=6)break;
       }
       return weeks;
@@ -395,6 +429,7 @@
       const [editModal,setEditModal]=useState({open:false,tp:null,isNew:false,newWi:null,newDi:null});
       const [notesModal,setNotesModal]=useState({open:false,wk:null});
       const [history,setHistory]=useState([]);
+      const [isLoading,setIsLoading]=useState(true);
       const MAX_HISTORY = 50;
 
       const monthKey=`${year}-${month}`;
@@ -403,6 +438,37 @@
       const curNotes=weekNotes[monthKey]||{};
       const curCustom=customTPs[monthKey]||[];
       const curDeleted=deletedTPs[monthKey]||[];
+
+      // Load data from Firebase
+      useEffect(() => {
+        setIsLoading(true);
+        const docRef = window.db.collection('calendars').doc(monthKey);
+        
+        const unsubscribe = docRef.onSnapshot((doc) => {
+          if (doc.exists) {
+            const data = doc.data();
+            setWeekTypes(prev => ({...prev, [monthKey]: data.weekTypes || {}}));
+            setBriefs(prev => ({...prev, ...data.briefs || {}}));
+            setWeekNotes(prev => ({...prev, [monthKey]: data.weekNotes || {}}));
+            setCustomTPs(prev => ({...prev, [monthKey]: data.customTPs || []}));
+            setDeletedTPs(prev => ({...prev, [monthKey]: data.deletedTPs || []}));
+            setTpOverrides(prev => ({...prev, ...data.tpOverrides || {}}));
+          }
+          setIsLoading(false);
+        });
+
+        return () => unsubscribe();
+      }, [monthKey]);
+
+      // Save data to Firebase
+      const saveToFirebase = async (updates) => {
+        const docRef = window.db.collection('calendars').doc(monthKey);
+        try {
+          await docRef.set(updates, { merge: true });
+        } catch (error) {
+          console.error('Error saving to Firebase:', error);
+        }
+      };
 
       const addToHistory = (action) => {
         setHistory(prev => {
@@ -419,31 +485,43 @@
         switch(lastAction.type) {
           case 'edit_brief':
             setBriefs(lastAction.prevBriefs);
+            saveToFirebase({ briefs: lastAction.prevBriefs });
             break;
           case 'delete_tp':
             if (lastAction.isCustom) {
               setCustomTPs(lastAction.prevCustomTPs);
+              saveToFirebase({ customTPs: lastAction.prevCustomTPs[monthKey] || [] });
             } else {
               setDeletedTPs(lastAction.prevDeletedTPs);
+              saveToFirebase({ deletedTPs: lastAction.prevDeletedTPs[monthKey] || [] });
             }
             setBriefs(lastAction.prevBriefs);
+            saveToFirebase({ briefs: lastAction.prevBriefs });
             break;
           case 'add_custom_tp':
             setCustomTPs(lastAction.prevCustomTPs);
             setBriefs(lastAction.prevBriefs);
+            saveToFirebase({ 
+              customTPs: lastAction.prevCustomTPs[monthKey] || [],
+              briefs: lastAction.prevBriefs 
+            });
             break;
           case 'move_tp':
             if (lastAction.isCustom) {
               setCustomTPs(lastAction.prevCustomTPs);
+              saveToFirebase({ customTPs: lastAction.prevCustomTPs[monthKey] || [] });
             } else {
               setTpOverrides(lastAction.prevTpOverrides);
+              saveToFirebase({ tpOverrides: lastAction.prevTpOverrides });
             }
             break;
           case 'set_week_type':
             setWeekTypes(lastAction.prevWeekTypes);
+            saveToFirebase({ weekTypes: lastAction.prevWeekTypes[monthKey] || {} });
             break;
           case 'set_week_notes':
             setWeekNotes(lastAction.prevWeekNotes);
+            saveToFirebase({ weekNotes: lastAction.prevWeekNotes[monthKey] || {} });
             break;
           case 'clear_all':
             setBriefs(lastAction.prevBriefs);
@@ -452,6 +530,14 @@
             setTpOverrides(lastAction.prevTpOverrides);
             setWeekTypes(lastAction.prevWeekTypes);
             setWeekNotes(lastAction.prevWeekNotes);
+            saveToFirebase({
+              briefs: lastAction.prevBriefs,
+              customTPs: lastAction.prevCustomTPs[monthKey] || [],
+              deletedTPs: lastAction.prevDeletedTPs[monthKey] || [],
+              tpOverrides: lastAction.prevTpOverrides,
+              weekTypes: lastAction.prevWeekTypes[monthKey] || {},
+              weekNotes: lastAction.prevWeekNotes[monthKey] || {}
+            });
             break;
         }
         
@@ -473,30 +559,35 @@
           prevWeekNotes: weekNotes,
         });
         
-        setBriefs(prev => {
-          const newBriefs = {...prev};
-          Object.keys(newBriefs).forEach(key => {
-            if (key.includes(monthKey) || key.startsWith('custom-')) {
-              delete newBriefs[key];
-            }
-          });
-          return newBriefs;
+        const newBriefs = {...briefs};
+        Object.keys(newBriefs).forEach(key => {
+          if (key.includes(monthKey) || key.startsWith('custom-')) {
+            delete newBriefs[key];
+          }
         });
         
+        const newOverrides = {...tpOverrides};
+        Object.keys(newOverrides).forEach(uid => {
+          if (uid.includes(monthKey)) {
+            delete newOverrides[uid];
+          }
+        });
+        
+        setBriefs(newBriefs);
         setCustomTPs(prev => ({...prev, [monthKey]: []}));
         setDeletedTPs(prev => ({...prev, [monthKey]: []}));
-        setTpOverrides(prev => {
-          const newOverrides = {...prev};
-          Object.keys(newOverrides).forEach(uid => {
-            if (uid.includes(monthKey)) {
-              delete newOverrides[uid];
-            }
-          });
-          return newOverrides;
-        });
-        
+        setTpOverrides(newOverrides);
         setWeekTypes(prev => ({...prev, [monthKey]: {}}));
         setWeekNotes(prev => ({...prev, [monthKey]: {}}));
+        
+        saveToFirebase({
+          briefs: newBriefs,
+          customTPs: [],
+          deletedTPs: [],
+          tpOverrides: newOverrides,
+          weekTypes: {},
+          weekNotes: {}
+        });
       };
 
       const handlePublishToAsana = () => {
@@ -525,6 +616,7 @@
               if(wi<weeks.length-1&&(!mk[wi+1]||mk[wi+1]==="evergreen")) mk[wi+1]="wind";
             }
           }
+          saveToFirebase({ weekTypes: mk });
           return {...prev,[monthKey]:mk};
         });
       };
@@ -578,14 +670,18 @@
             isCustom: true,
             prevCustomTPs: customTPs,
           });
-          setCustomTPs(prev=>({...prev,[monthKey]:(prev[monthKey]||[]).map(t=>t.uid===dragUid?{...t,weekIndex:wi,dayIdx:di}:t)}));
+          const newCustom = (customTPs[monthKey]||[]).map(t=>t.uid===dragUid?{...t,weekIndex:wi,dayIdx:di}:t);
+          setCustomTPs(prev=>({...prev,[monthKey]:newCustom}));
+          saveToFirebase({ customTPs: newCustom });
         } else {
           addToHistory({
             type: 'move_tp',
             isCustom: false,
             prevTpOverrides: tpOverrides,
           });
-          setTpOverrides(prev=>({...prev,[dragUid]:{weekIndex:wi,dayIdx:di}}));
+          const newOverrides = {...tpOverrides,[dragUid]:{weekIndex:wi,dayIdx:di}};
+          setTpOverrides(newOverrides);
+          saveToFirebase({ tpOverrides: newOverrides });
         }
         setDragUid(null);setDragOverCell(null);
       };
@@ -600,7 +696,12 @@
             prevCustomTPs: customTPs,
             prevBriefs: briefs,
           });
-          setCustomTPs(prev=>({...prev,[monthKey]:(prev[monthKey]||[]).filter(t=>t.uid!==tp.uid)}));
+          const newCustom = (customTPs[monthKey]||[]).filter(t=>t.uid!==tp.uid);
+          setCustomTPs(prev=>({...prev,[monthKey]:newCustom}));
+          const newBriefs = {...briefs};
+          delete newBriefs[tp.uid];
+          setBriefs(newBriefs);
+          saveToFirebase({ customTPs: newCustom, briefs: newBriefs });
         } else {
           addToHistory({
             type: 'delete_tp',
@@ -608,10 +709,13 @@
             prevDeletedTPs: deletedTPs,
             prevBriefs: briefs,
           });
-          setDeletedTPs(prev=>({...prev,[monthKey]:[...(prev[monthKey]||[]),tp.uid]}));
+          const newDeleted = [...(deletedTPs[monthKey]||[]),tp.uid];
+          setDeletedTPs(prev=>({...prev,[monthKey]:newDeleted}));
+          const newBriefs = {...briefs};
+          delete newBriefs[tp.uid];
+          setBriefs(newBriefs);
+          saveToFirebase({ deletedTPs: newDeleted, briefs: newBriefs });
         }
-        
-        setBriefs(prev=>{const n={...prev};delete n[tp.uid];return n;});
       };
 
       const openNewTP=(wi,di)=>{
@@ -633,14 +737,19 @@
             detail:vals.messaging||"",seg:vals.segment||"",
             eventType:"custom",weekIndex:editModal.newWi,dayIdx:editModal.newDi,
           };
-          setCustomTPs(prev=>({...prev,[monthKey]:[...(prev[monthKey]||[]),newTp]}));
-          setBriefs(prev=>({...prev,[uid]:vals}));
+          const newCustom = [...(customTPs[monthKey]||[]),newTp];
+          const newBriefs = {...briefs,[uid]:vals};
+          setCustomTPs(prev=>({...prev,[monthKey]:newCustom}));
+          setBriefs(newBriefs);
+          saveToFirebase({ customTPs: newCustom, briefs: newBriefs });
         } else {
           addToHistory({
             type: 'edit_brief',
             prevBriefs: briefs,
           });
-          setBriefs(prev=>({...prev,[editModal.tp.uid]:vals}));
+          const newBriefs = {...briefs,[editModal.tp.uid]:vals};
+          setBriefs(newBriefs);
+          saveToFirebase({ briefs: newBriefs });
         }
       };
 
@@ -650,6 +759,14 @@
       };
 
       const isCustomTP=(tp)=>tp?.uid?.startsWith("custom-");
+
+      if (isLoading) {
+        return (
+          <div style={{ fontFamily:"'DM Sans',sans-serif",background:"linear-gradient(165deg,#FEFDFB 0%,#F7F5F0 40%,#F0EDE6 100%)",minHeight:"100vh",padding:"24px 16px",display:"flex",alignItems:"center",justifyContent:"center" }}>
+            <div style={{ fontSize:18,fontWeight:700,color:"#2A2520" }}>Loading calendar...</div>
+          </div>
+        );
+      }
 
       return (
         <div style={{ fontFamily:"'DM Sans',sans-serif",background:"linear-gradient(165deg,#FEFDFB 0%,#F7F5F0 40%,#F0EDE6 100%)",minHeight:"100vh",padding:"24px 16px" }}>
@@ -662,7 +779,9 @@
                 type: 'set_week_notes',
                 prevWeekNotes: weekNotes,
               });
-              setWeekNotes(prev=>({...prev,[monthKey]:{...(prev[monthKey]||{}),[notesModal.wk]:text}}));
+              const newNotes = {...(weekNotes[monthKey]||{}),[notesModal.wk]:text};
+              setWeekNotes(prev=>({...prev,[monthKey]:newNotes}));
+              saveToFirebase({ weekNotes: newNotes });
             }} />
 
           <div style={{ maxWidth:1200,margin:"0 auto" }}>
@@ -834,11 +953,12 @@
                 <strong style={{ color:"#3D3830" }}>5. Drag to rearrange:</strong> Grab any chip and drop it on a different day. Green dashed outline shows the target.<br/>
                 <strong style={{ color:"#3D3830" }}>6. Week notes:</strong> 📝 in the sidebar for meeting context, coordination, content themes.<br/>
                 <strong style={{ color:"#3D3830" }}>7. Undo:</strong> Click the Undo button to reverse your last action (up to 50 actions remembered).<br/>
+                <strong style={{ color:"#3D3830" }}>8. Real-time sync:</strong> All changes save automatically and sync across all devices in real-time!<br/>
                 <strong style={{ color:"#3D3830" }}>Ramp Up note:</strong> The Tuesday email in Ramp Up is your normal Product Spotlight — with a launch tease callout baked in (not the subject line).
               </div>
             </div>
 
-            <div style={{ textAlign:"center",marginTop:20,fontSize:10,color:"#B5B0A8" }}>CRM Protocol Planner — Built for your marketing team</div>
+            <div style={{ textAlign:"center",marginTop:20,fontSize:10,color:"#B5B0A8" }}>CRM Protocol Planner — Built for your marketing team · Data synced via Firebase</div>
           </div>
         </div>
       );
@@ -846,6 +966,7 @@
 
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(<MarketingSlatePlanner />);
+    } // End of renderApp function
   </script>
 </body>
 </html>
