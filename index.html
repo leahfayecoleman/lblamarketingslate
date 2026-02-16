@@ -58,7 +58,7 @@
     const MO = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
     const CHANNELS = [
-      { value:"email", icon:"✉", label:"Email", color:"#3BA58A" },
+      { value:"email", icon:"📧", label:"Email", color:"#3BA58A" },
       { value:"sms",   icon:"💬", label:"SMS",   color:"#D4598A" },
       { value:"app",   icon:"📱", label:"App Push", color:"#C4925A" },
     ];
@@ -166,10 +166,14 @@
 
     function buildWeekTPs(weekType, wi) {
       const tps = [];
+      // Only build templates if a week type is explicitly set
+      if (!weekType) return tps;
+      
       const tmpl = getEventTemplate(weekType);
       for (let di=0; di<7; di++) {
         const eventItems = (tmpl && tmpl[di]) ? tmpl[di] : [];
         const items = eventItems.map(t => ({ ...t, eventType:weekType, dayIdx:di, weekIndex:wi, uid:`${wi}-${di}-${t.ch}-${t.topic}-${t.label.slice(0,8)}` }));
+        /* fill evergreen on empty days */
         if (items.length === 0 || weekType === "evergreen") {
           const eg = EVERGREEN[di] || [];
           eg.forEach(t => {
@@ -602,18 +606,26 @@
         
         setWeekTypes(prev=>{
           const mk={...(prev[monthKey]||{})};
+          const oldType = mk[wi];
+          
           if(!type){
-            const oldType=mk[wi];
             delete mk[wi];
+            // If removing launch, also clear ramp/wind
             if(oldType==="launch"){
               if(mk[wi-1]==="ramp") delete mk[wi-1];
               if(mk[wi+1]==="wind") delete mk[wi+1];
             }
           } else {
             mk[wi]=type;
+            // If setting launch, auto-set ramp/wind
             if(type==="launch"){
               if(wi>0&&(!mk[wi-1]||mk[wi-1]==="evergreen")) mk[wi-1]="ramp";
               if(wi<weeks.length-1&&(!mk[wi+1]||mk[wi+1]==="evergreen")) mk[wi+1]="wind";
+            }
+            // If changing FROM launch to something else, clear ramp/wind
+            if(oldType==="launch" && type!=="launch"){
+              if(mk[wi-1]==="ramp") delete mk[wi-1];
+              if(mk[wi+1]==="wind") delete mk[wi+1];
             }
           }
           saveToFirebase({ weekTypes: mk });
@@ -624,7 +636,7 @@
       const allTPs=useMemo(()=>{
         const all=[];
         weeks.forEach((_,wi)=>{
-          const type=curTypes[wi]||"evergreen";
+          const type=curTypes[wi]||null;
           const tps=buildWeekTPs(type,wi);
           tps.forEach(tp=>{
             if (curDeleted.includes(tp.uid)) return;
@@ -839,7 +851,7 @@
               <h2 style={{ fontFamily:"'Instrument Serif',serif",fontSize:22,fontWeight:400,color:"#2A2520",margin:0,minWidth:170,textAlign:"center" }}>{MO[month]} {year}</h2>
               <button onClick={nextMonth} style={{ background:"#fff",border:"1.5px solid #D5D0C8",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:14,fontWeight:600,color:"#3D3830" }}>→</button>
               <div style={{ marginLeft:"auto",display:"flex",gap:8,flexWrap:"wrap" }}>
-                {[["✉",counts.email,"#3BA58A"],["💬",counts.sms,"#D4598A"],["📱",counts.app,"#C4925A"]].map(([ic,v,c])=>(
+                {[["📧",counts.email,"#3BA58A"],["💬",counts.sms,"#D4598A"],["📱",counts.app,"#C4925A"]].map(([ic,v,c])=>(
                   <div key={ic} style={{ background:"#fff",borderRadius:7,padding:"5px 12px",border:"1.5px solid #E5E1DB",display:"flex",alignItems:"center",gap:5 }}>
                     <span style={{ fontSize:11 }}>{ic}</span><span style={{ fontSize:15,fontWeight:800,color:c }}>{v}</span>
                   </div>
@@ -853,12 +865,47 @@
             </div>
 
             <div style={{ display:"flex",gap:6,marginBottom:14,flexWrap:"wrap" }}>
-              {TOPICS.map(t=>(
-                <div key={t.value} style={{ display:"flex",alignItems:"center",gap:3,padding:"3px 8px",borderRadius:5,background:t.color+"10",border:`1px solid ${t.color}20` }}>
-                  <span style={{ fontSize:9 }}>{t.emoji}</span>
-                  <span style={{ fontSize:9,fontWeight:700,color:t.color }}>{t.label}</span>
-                </div>
-              ))}
+              {TOPICS.map(t=>{
+                const topicTPs = allTPs.filter(tp=>(briefs[tp.uid]?.topic||tp.topic)===t.value);
+                const emailCount = topicTPs.filter(tp=>(briefs[tp.uid]?.ch||tp.ch)==="email").length;
+                const smsCount = topicTPs.filter(tp=>(briefs[tp.uid]?.ch||tp.ch)==="sms").length;
+                const appCount = topicTPs.filter(tp=>(briefs[tp.uid]?.ch||tp.ch)==="app").length;
+                const totalCount = topicTPs.length;
+                
+                return (
+                  <div 
+                    key={t.value} 
+                    style={{ 
+                      display:"flex",
+                      alignItems:"center",
+                      gap:3,
+                      padding:"3px 8px",
+                      borderRadius:5,
+                      background:t.color+"10",
+                      border:`1px solid ${t.color}20`,
+                      cursor:"help",
+                      position:"relative"
+                    }}
+                    title={`${t.label}: ${totalCount} total\n📧 Email: ${emailCount}\n💬 SMS: ${smsCount}\n📱 App: ${appCount}`}
+                  >
+                    <span style={{ fontSize:9 }}>{t.emoji}</span>
+                    <span style={{ fontSize:9,fontWeight:700,color:t.color }}>{t.label}</span>
+                    {totalCount > 0 && (
+                      <span style={{ 
+                        fontSize:8,
+                        fontWeight:700,
+                        color:t.color,
+                        background:t.color+"20",
+                        padding:"1px 4px",
+                        borderRadius:3,
+                        marginLeft:2
+                      }}>
+                        {totalCount}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             <div style={{ background:"#fff",borderRadius:14,border:"1.5px solid #E5E1DB",overflow:"hidden",boxShadow:"0 2px 16px rgba(30,27,23,0.06)" }}>
@@ -889,8 +936,6 @@
                         <option value="evergreen">🟢 Evergreen</option>
                         <option value="launch">🚀 Launch Week</option>
                         <option value="sale">🔴 Sale / Promo Launch</option>
-                        <option value="ramp">🟣↗ Ramp Up</option>
-                        <option value="wind">🟣↘ Wind Down</option>
                       </select>
                       {isAuto&&<div style={{ fontSize:8,color:typeConf.color,fontStyle:"italic" }}>Auto-set from Launch</div>}
 
