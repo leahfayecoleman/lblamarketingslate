@@ -191,7 +191,7 @@
       while(true) {
         const wk=[];
         for(let i=0;i<7;i++){const d=new Date(cur);d.setDate(d.getDate()+i);wk.push({date:d,inMonth:d.getMonth()===month,day:d.getDate()});}
-        weeks.push(wk); cur.setDate(cur.setDate()+7);
+        weeks.push(wk); cur.setDate(cur.getDate()+7);
         if(weeks.length>=4&&cur>last)break; if(weeks.length>=6)break;
       }
       return weeks;
