@@ -84,8 +84,8 @@
       evergreen:{ label:"Evergreen",         emoji:"🟢",  color:"#2D8A6E", bg:"#E8F5F0", border:"#2D8A6E" },
       launch:   { label:"Launch Week",       emoji:"🚀",  color:"#7C3AED", bg:"#F3EEFF", border:"#7C3AED" },
       sale:     { label:"Sale / Promo Launch", emoji:"🔴",  color:"#DC2626", bg:"#FEF2F2", border:"#DC2626" },
-      ramp:     { label:"Launch Ramp Up",    emoji:"🟣↗", color:"#9333EA", bg:"#FAF5FF", border:"#9333EA" },
-      wind:     { label:"Launch Wind Down",  emoji:"🟣↘", color:"#6D28D9", bg:"#F5F0FF", border:"#6D28D9" },
+      ramp:     { label:"Pre Launch",        emoji:"🟣↗", color:"#9333EA", bg:"#FAF5FF", border:"#9333EA" },
+      wind:     { label:"Post Launch",       emoji:"🟣↘", color:"#6D28D9", bg:"#F5F0FF", border:"#6D28D9" },
     };
 
     /* ─── default touchpoint templates ─── */
@@ -926,17 +926,30 @@
                       <span style={{ fontSize:9.5,color:"#8C8578",fontWeight:600,textTransform:"uppercase",letterSpacing:".05em" }}>
                         {MO[week[0].date.getMonth()].slice(0,3)} {week[0].day}–{week[6].day}
                       </span>
-                      <select value={wType||""} onChange={e=>setType(wi,e.target.value||null)} style={{
-                        padding:"5px 6px",borderRadius:6,fontSize:10,fontWeight:700,
-                        border:`1.5px solid ${typeConf.border}${wType?"60":""}`,
-                        background:wType?typeConf.bg:"#fff",color:wType?typeConf.color:"#6B6560",
-                        cursor:"pointer",fontFamily:"'DM Sans',sans-serif",outline:"none",
-                      }}>
-                        <option value="">— Select —</option>
-                        <option value="evergreen">🟢 Evergreen</option>
-                        <option value="launch">🚀 Launch Week</option>
-                        <option value="sale">🔴 Sale / Promo Launch</option>
-                      </select>
+                      {isAuto ? (
+                        <div style={{
+                          padding:"5px 6px",borderRadius:6,fontSize:10,fontWeight:700,
+                          border:`1.5px solid ${typeConf.border}60`,
+                          background:typeConf.bg,color:typeConf.color,
+                          fontFamily:"'DM Sans',sans-serif",
+                          display:"flex",alignItems:"center",justifyContent:"center",
+                          cursor:"not-allowed",opacity:0.9
+                        }}>
+                          {typeConf.emoji} {typeConf.label}
+                        </div>
+                      ) : (
+                        <select value={wType||""} onChange={e=>setType(wi,e.target.value||null)} style={{
+                          padding:"5px 6px",borderRadius:6,fontSize:10,fontWeight:700,
+                          border:`1.5px solid ${typeConf.border}${wType?"60":""}`,
+                          background:wType?typeConf.bg:"#fff",color:wType?typeConf.color:"#6B6560",
+                          cursor:"pointer",fontFamily:"'DM Sans',sans-serif",outline:"none",
+                        }}>
+                          <option value="">— Select —</option>
+                          <option value="evergreen">🟢 Evergreen</option>
+                          <option value="launch">🚀 Launch Week</option>
+                          <option value="sale">🔴 Sale / Promo Launch</option>
+                        </select>
+                      )}
                       {isAuto&&<div style={{ fontSize:8,color:typeConf.color,fontStyle:"italic" }}>Auto-set from Launch</div>}
 
                       <button onClick={()=>setNotesModal({open:true,wk:wi})} style={{
@@ -991,7 +1004,7 @@
             <div style={{ marginTop:16,padding:"14px 18px",background:"#fff",borderRadius:12,border:"1.5px solid #E5E1DB" }}>
               <div style={{ fontSize:12,fontWeight:800,color:"#2A2520",marginBottom:6 }}>How it works</div>
               <div style={{ fontSize:11,color:"#8C8578",lineHeight:1.8,maxWidth:900 }}>
-                <strong style={{ color:"#3D3830" }}>1. Set week types:</strong> Use dropdowns. <em>Launch Week</em> auto-sets adjacent weeks to Ramp Up / Wind Down. Change back to Evergreen or "— Select —" to reset.<br/>
+                <strong style={{ color:"#3D3830" }}>1. Set week types:</strong> Use dropdowns to select Evergreen, Launch Week, or Sale. <em>Launch Week</em> automatically sets the week before to <em>Pre Launch</em> and the week after to <em>Post Launch</em>. Change the launch week to reset adjacent weeks.<br/>
                 <strong style={{ color:"#3D3830" }}>2. Edit any touchpoint:</strong> Click a chip to change its channel (Email/SMS/App), topic, subject line, messaging notes & segment. Unbriefed chips appear slightly faded.<br/>
                 <strong style={{ color:"#3D3830" }}>3. Add new touchpoints:</strong> Click any day's + to create a custom send from scratch — choose channel, topic, and brief it right away.<br/>
                 <strong style={{ color:"#3D3830" }}>4. Delete touchpoints:</strong> Hover over any chip and click the red X to remove it. Use Undo if you make a mistake.<br/>
@@ -999,7 +1012,7 @@
                 <strong style={{ color:"#3D3830" }}>6. Week notes:</strong> 📝 in the sidebar for meeting context, coordination, content themes.<br/>
                 <strong style={{ color:"#3D3830" }}>7. Undo:</strong> Click the Undo button to reverse your last action (up to 50 actions remembered).<br/>
                 <strong style={{ color:"#3D3830" }}>8. Real-time sync:</strong> All changes save automatically and sync across all devices in real-time!<br/>
-                <strong style={{ color:"#3D3830" }}>Ramp Up note:</strong> The Tuesday email in Ramp Up is your normal Product Spotlight — with a launch tease callout baked in (not the subject line).
+                <strong style={{ color:"#3D3830" }}>Pre Launch note:</strong> The Tuesday email in Pre Launch week is your normal Product Spotlight — with a launch tease callout baked in (not the subject line).
               </div>
             </div>
 
